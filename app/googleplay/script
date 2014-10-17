@@ -1,0 +1,83 @@
+#!/bin/sh
+
+HOSTS="/${HOME}/etc/hosts.d/hosts"
+# 插件安装入口函数
+install()
+{
+    # 拷贝所有文件至插件home目录之下
+    mkdir -p "$HOME"/bin "$HOME"/etc
+    cp ./dns.sh "$HOME"/bin/
+    chmod +x ${HOME}/bin/dns.sh
+
+    # 安装成功后启动插件
+    # 注意：此处直接将start函数的返回值作为install状态返回，启动失败即会使得安装失败
+    start
+}
+
+# 插件卸载函数
+uninstall()
+{
+    # 卸载之前先停止运行
+    stop
+
+    # 此处没有删除文件的操作，原因是 App Engine 会将插件的home目录整体删除，
+    # 所以对于home目录下的文件，无须显式清理.
+}
+
+# 插件启动方法
+start()
+{
+    # 引用参数文件，将参数变量包含到当前脚本中
+    #. $HOME/etc/dnspod.conf
+
+    # 插件启动时先执行一次动态解析，以使解析立即生效
+    dns.sh
+
+    # 添加上述命令为定时任务，每10分钟执行一次动态解析
+    crontab - <<EOF
+*/10 * * * *  ( . /etc/environment; dns.sh )
+EOF
+
+    # App Engine 内置方法“appctl autostart”，将当前插件设置为路由器启动时自动运行
+    haecli appctl autostart -S 88
+}
+
+# 插件停止方法
+stop()
+{
+    # 用户若点击“停止插件”时，则取消该插件的自动运行
+    haecli appctl noautostart
+
+    # 删除当前插件创建的定时任务
+    crontab -r
+
+    # 清理临时文件
+    rm ${HOSTS}
+
+    # stop函数无须关心返回值
+}
+
+# 插件状态查询
+status()
+{
+    # 检查定时任务状态，若存在则表示运行中.
+    #
+    # 运行中，若发现状态文件有数据，则将消息发送给云平台，JSON串格式为：
+    #  { "status": "MSG: XXXXXXXXXXX" }；否则为正常运行，输出JSON：
+    #  { "status": "running" }
+    #
+    # 未运行，输出JSON：
+    #  { "status": "stopped" }
+
+    if crontab -l >/dev/null 2>&1; then
+        if [ -s ${HOSTS}]; then
+            local __msg=`cat $HOSTS`
+            echo "{ \"status\" : \"MSG: $__msg\" }"
+        else
+            echo "{ \"status\" : \"running\" }"
+        fi
+    else
+        echo "{ \"status\" : \"stopped\" }"
+    fi
+}
+
