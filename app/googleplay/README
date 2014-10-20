@@ -1,0 +1,15 @@
+
+Repackage the app:
+
+rm googleplay.tgz &&  tar zcvf googleplay.tgz * &&  PythonHttpServer 
+
+
+Reinstall the app
+
+ rm googleplay.tgz  &&  wget http://192.168.199.190:8000/googleplay.tgz && tar xvzf googleplay.tgz &&  . ./script  && install
+
+Reload the service
+
+haecli config-reload hosts
+
+
